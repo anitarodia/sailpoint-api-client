@@ -111,48 +111,61 @@ var Paginator = /** @class */ (function () {
     };
     Paginator.paginateSearchApi = function (searchAPI, search, increment, limit) {
         return __awaiter(this, void 0, void 0, function () {
-            var searchParams, offset, maxLimit, modified, results, result;
+            var maxLimit, modified, sortField, searchAfter, concurrencyLimit, promises, i, searchParams, resultsArray, shouldBreak, _i, resultsArray_2, results, lastResult, finalResponse;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        increment = increment ? increment : 250;
-                        searchParams = {
-                            search: search,
-                            limit: increment,
-                        };
-                        offset = 0;
-                        maxLimit = limit ? limit : 0;
+                        increment = increment || 250;
+                        maxLimit = limit || 0;
                         modified = [];
-                        if (!search.sort || search.sort.length != 1) {
+                        if (!search.sort || search.sort.length !== 1) {
                             throw "search must include exactly one sort parameter to paginate properly";
                         }
+                        sortField = search.sort[0].replace("-", "");
+                        searchAfter = [];
+                        concurrencyLimit = 10;
                         _a.label = 1;
                     case 1:
                         if (!true) return [3 /*break*/, 3];
-                        console.log("Paginating call, offset = ".concat(offset));
-                        return [4 /*yield*/, searchAPI.searchPost(searchParams)];
+                        console.log("Paginating call, searchAfter = ".concat(JSON.stringify(searchAfter)));
+                        promises = [];
+                        for (i = 0; i < concurrencyLimit; i++) {
+                            searchParams = {
+                                search: __assign(__assign({}, search), { searchAfter: i === 0 ? searchAfter : undefined }),
+                                limit: increment,
+                            };
+                            promises.push(searchAPI.searchPost(searchParams));
+                        }
+                        return [4 /*yield*/, Promise.all(promises)];
                     case 2:
-                        results = _a.sent();
-                        modified.push.apply(modified, results.data);
-                        if (results.data.length < increment ||
-                            (modified.length >= maxLimit && maxLimit > 0)) {
-                            results.data = modified;
-                            return [2 /*return*/, results];
-                        }
-                        else {
-                            result = results.data[results.data.length - 1];
-                            if (searchParams.search.sort) {
-                                searchParams.search.searchAfter = [
-                                    result[searchParams.search.sort[0].replace("-", "")],
-                                ];
+                        resultsArray = _a.sent();
+                        shouldBreak = false;
+                        // Process each response
+                        for (_i = 0, resultsArray_2 = resultsArray; _i < resultsArray_2.length; _i++) {
+                            results = resultsArray_2[_i];
+                            if (results.data.length > 0) {
+                                modified.push.apply(modified, results.data);
+                                lastResult = results.data[results.data.length - 1];
+                                searchAfter = [lastResult[sortField]];
                             }
-                            else {
-                                throw "search unexpectedly did not return a result we can search after!";
+                            // If the number of returned records is less than the increment, stop fetching
+                            if (results.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
+                                shouldBreak = true;
+                                break;
                             }
                         }
-                        offset += increment;
+                        if (shouldBreak || (maxLimit > 0 && modified.length >= maxLimit)) {
+                            return [3 /*break*/, 3];
+                        }
                         return [3 /*break*/, 1];
-                    case 3: return [2 /*return*/];
+                    case 3: return [4 /*yield*/, searchAPI.searchPost({
+                            search: search,
+                            limit: increment,
+                        })];
+                    case 4:
+                        finalResponse = _a.sent();
+                        finalResponse.data = modified.slice(0, maxLimit || modified.length);
+                        return [2 /*return*/, finalResponse];
                 }
             });
         });
