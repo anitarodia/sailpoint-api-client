@@ -7,29 +7,9 @@ import {
 } from "./v3";
 
 export interface PaginationParams {
-  /**
-   * Max number of results to return. See [V3 API Standard Collection Parameters](https://developer.sailpoint.com/idn/api/standard-collection-parameters) for more information.
-   * @type {number}
-   * @memberof AccountsApiListAccounts
-   */
   limit?: number;
-  /**
-   * Offset into the full result set. Usually specified with *limit* to paginate through the results. See [V3 API Standard Collection Parameters](https://developer.sailpoint.com/idn/api/standard-collection-parameters) for more information.
-   * @type {number}
-   * @memberof AccountsApiListAccounts
-   */
   offset?: number;
-  /**
-   * If *true* it will populate the *X-Total-Count* response header with the number of results that would be returned if *limit* and *offset* were ignored.  Since requesting a total count can have a performance impact, it is recommended not to send **count&#x3D;true** if that value will not be used.  See [V3 API Standard Collection Parameters](https://developer.sailpoint.com/idn/api/standard-collection-parameters) for more information.
-   * @type {boolean}
-   * @memberof AccountsApiListAccounts
-   */
   count?: boolean;
-  /**
-   * Filter results using the standard syntax described in [V3 API Standard Collection Parameters](https://developer.sailpoint.com/idn/api/standard-collection-parameters#filtering-results)  Filtering is supported for the following fields and operators:  **id**: *eq, in*  **identityId**: *eq*  **name**: *eq, in*  **nativeIdentity**: *eq, in*  **sourceId**: *eq, in*  **uncorrelated**: *eq*
-   * @type {string}
-   * @memberof AccountsApiListAccounts
-   */
   filters?: string;
 }
 
@@ -46,130 +26,103 @@ export class Paginator {
     thisArg: T,
     callbackFn: (this: T, args: A) => Promise<AxiosResponse<TResult[], any>>,
     args?: A,
-    increment?: number  // Make increment optional
+    increment?: number,
+    concurrency?: number // Added concurrency support
   ): Promise<AxiosResponse<TResult[], any>> {
     let params: PaginationParams = args ? args : { limit: 0, offset: 0 };
     const maxLimit = params && params.limit ? params.limit : 0;
-
-    // Set default values for increment and offset
     if (!params.offset) {
       params.offset = 0;
     }
     if (!increment) {
       increment = 250;
     }
+    if (!concurrency) {
+      concurrency = 1; // Default to 1 request at a time if concurrency is not provided
+    }
     params.limit = increment;
 
     let modified: TResult[] = [];
-    const concurrencyLimit = 10; // Hardcoded concurrency limit
-
-    // Declare the variable to hold the results
-    let resultsArray: AxiosResponse<TResult[], any>[] = [];
+    const requests = [];
 
     while (true) {
       console.log(`Paginating call, offset = ${params.offset}`);
-
-      // Create an array of promises to fetch multiple pages concurrently
-      const promises = [];
-      for (let i = 0; i < concurrencyLimit; i++) {
-        const offset = params.offset + i * increment!;
-        promises.push(callbackFn.call(thisArg, { ...params, offset }));
-      }
-
-      // Wait for all the concurrent requests to complete
-      resultsArray = await Promise.all(promises);
-
-      // Process each response
-      for (const results of resultsArray) {
+      const request = callbackFn.call(thisArg, params).then((results: AxiosResponse<TResult[], any>) => {
         modified.push(...results.data);
-        
-        // If the number of returned records is less than the increment, stop fetching
-        if (results.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
-          results.data = modified; // Update data with the modified array
-          return results; // Return the last successful response
+        return results.data.length < increment || (modified.length >= maxLimit && maxLimit > 0);
+      });
+      requests.push(request);
+
+      if (requests.length === concurrency) {
+        const responses = await Promise.all(requests);
+        if (responses.some(isDone => isDone)) {
+          return {
+            ...await callbackFn.call(thisArg, params),
+            data: modified,
+          };
         }
+        requests.length = 0; // Clear the batch of requests
       }
-
-      // Increment the offset for the next set of parallel requests
-      params.offset += increment * concurrencyLimit;
-
-      // If we reach the maxLimit, stop fetching
-      if (maxLimit > 0 && modified.length >= maxLimit) {
-        break; // Exit the loop if we've reached the maximum limit
-      }
+      params.offset += increment;
     }
-
-    // Return the last response with the combined results
-    const finalResponse = resultsArray[0]; // Use the first response for metadata
-    finalResponse.data = modified; // Set the combined data
-    return finalResponse; // Return the final response
   }
 
   public static async paginateSearchApi(
     searchAPI: SearchApi,
     search: Search,
     increment?: number,
-    limit?: number
-  ): Promise<AxiosResponse<SearchDocument[], any>> {
-    return this.paginateSearchApiWithConcurrency(searchAPI, search, increment, limit);
-  }
-
-  private static async paginateSearchApiWithConcurrency(
-    searchAPI: SearchApi,
-    search: Search,
-    increment?: number,
     limit?: number,
-    concurrency: number = 3
+    concurrency?: number // Added concurrency support
   ): Promise<AxiosResponse<SearchDocument[], any>> {
-    increment = increment || 250;
-    const maxLimit = limit || 0;
+    increment = increment ? increment : 250;
+    const searchParams: SearchApiSearchPostRequest = {
+      search: search,
+      limit: increment,
+    };
+    let offset = 0;
+    const maxLimit = limit ? limit : 0;
     let modified: SearchDocument[] = [];
+    const requests = [];
 
-    if (!search.sort || search.sort.length !== 1) {
+    if (!search.sort || search.sort.length != 1) {
       throw new Error("Search must include exactly one sort parameter to paginate properly");
     }
-
-    const fetchPage = async (searchAfter?: any[]): Promise<SearchDocument[]> => {
-      const searchParams: SearchApiSearchPostRequest = {
-        search: { ...search, searchAfter },
-        limit: increment,
-      };
-      const results = await searchAPI.searchPost(searchParams);
-      return results.data;
-    };
-
-    let searchAfter: any[] | undefined;
-    
-    while (true) {
-      const pagePromises: Promise<SearchDocument[]>[] = [];
-
-      for (let i = 0; i < concurrency; i++) {
-        pagePromises.push(fetchPage(searchAfter));
-      }
-
-      const pages = await Promise.all(pagePromises);
-
-      for (const page of pages) {
-        modified.push(...page);
-
-        if (page.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
-          const finalResponse = await searchAPI.searchPost({ search, limit: 1 });
-          finalResponse.data = modified.slice(0, maxLimit > 0 ? maxLimit : undefined);
-          return finalResponse;
-        }
-
-        const lastResult = page[page.length - 1];
-        const sortField = search.sort![0].replace("-", "") as keyof SearchDocument;
-        searchAfter = [lastResult[sortField]];
-      }
-
-      if (maxLimit > 0 && modified.length >= maxLimit) {
-        break;
-      }
+    if (!concurrency) {
+      concurrency = 1; // Default to 1 request at a time if concurrency is not provided
     }
 
-    const finalResponse = await searchAPI.searchPost({ search, limit: 1 });
-    finalResponse.data = modified.slice(0, maxLimit > 0 ? maxLimit : undefined);
-    return finalResponse;
+    while (true) {
+      console.log(`Paginating call, offset = ${offset}`);
+      const request = searchAPI.searchPost(searchParams).then((results: AxiosResponse<SearchDocument[], any>) => {
+        modified.push(...results.data);
+        if (results.data.length < increment || (modified.length >= maxLimit && maxLimit > 0)) {
+          return { done: true, data: modified };
+        }
+        const lastResult = results.data[results.data.length - 1] as any;
+        if (searchParams.search.sort) {
+          searchParams.search.searchAfter = [
+            lastResult[searchParams.search.sort[0].replace("-", "")],
+          ];
+        } else {
+          throw new Error("Search unexpectedly did not return a result we can search after!");
+        }
+        return { done: false, data: results.data };
+      });
+
+      requests.push(request);
+
+      if (requests.length === concurrency) {
+        const responses = await Promise.all(requests);
+        const anyDone = responses.some((response) => response.done);
+        if (anyDone) {
+          return {
+            ...await searchAPI.searchPost(searchParams),
+            data: modified,
+          };
+        }
+        requests.length = 0; // Clear the batch of requests
+      }
+      offset += increment;
+    }
   }
 }
