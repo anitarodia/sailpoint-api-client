@@ -111,64 +111,65 @@ export class Paginator {
     increment?: number,
     limit?: number
   ): Promise<AxiosResponse<SearchDocument[], any>> {
+    return this.paginateSearchApiWithConcurrency(searchAPI, search, increment, limit);
+  }
+
+  private static async paginateSearchApiWithConcurrency(
+    searchAPI: SearchApi,
+    search: Search,
+    increment?: number,
+    limit?: number,
+    concurrency: number = 3
+  ): Promise<AxiosResponse<SearchDocument[], any>> {
     increment = increment || 250;
     const maxLimit = limit || 0;
     let modified: SearchDocument[] = [];
 
     if (!search.sort || search.sort.length !== 1) {
-      throw "search must include exactly one sort parameter to paginate properly";
+      throw new Error("Search must include exactly one sort parameter to paginate properly");
     }
 
-    const sortField = search.sort[0].replace("-", "");
-    let searchAfter: any[] = [];
-    const concurrencyLimit = 10;
+    const fetchPage = async (searchAfter?: any[]): Promise<SearchDocument[]> => {
+      const searchParams: SearchApiSearchPostRequest = {
+        search: { ...search, searchAfter },
+        limit: increment,
+      };
+      const results = await searchAPI.searchPost(searchParams);
+      return results.data;
+    };
 
+    let searchAfter: any[] | undefined;
+    
     while (true) {
-      console.log(`Paginating call, searchAfter = ${JSON.stringify(searchAfter)}`);
+      const pagePromises: Promise<SearchDocument[]>[] = [];
 
-      // Create an array of promises to fetch multiple pages concurrently
-      const promises: Promise<AxiosResponse<SearchDocument[], any>>[] = [];
-      for (let i = 0; i < concurrencyLimit; i++) {
-        const searchParams: SearchApiSearchPostRequest = {
-          search: {
-            ...search,
-            searchAfter: i === 0 ? searchAfter : undefined,
-          },
-          limit: increment,
-        };
-        promises.push(searchAPI.searchPost(searchParams));
+      for (let i = 0; i < concurrency; i++) {
+        pagePromises.push(fetchPage(searchAfter));
       }
 
-      // Wait for all the concurrent requests to complete
-      const resultsArray = await Promise.all(promises);
+      const pages = await Promise.all(pagePromises);
 
-      let shouldBreak = false;
-      // Process each response
-      for (const results of resultsArray) {
-        if (results.data.length > 0) {
-          modified.push(...results.data);
-          const lastResult = results.data[results.data.length - 1];
-          searchAfter = [(lastResult as any)[sortField]];
+      for (const page of pages) {
+        modified.push(...page);
+
+        if (page.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
+          const finalResponse = await searchAPI.searchPost({ search, limit: 1 });
+          finalResponse.data = modified.slice(0, maxLimit > 0 ? maxLimit : undefined);
+          return finalResponse;
         }
 
-        // If the number of returned records is less than the increment, stop fetching
-        if (results.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
-          shouldBreak = true;
-          break;
-        }
+        const lastResult = page[page.length - 1];
+        const sortField = search.sort![0].replace("-", "") as keyof SearchDocument;
+        searchAfter = [lastResult[sortField]];
       }
 
-      if (shouldBreak || (maxLimit > 0 && modified.length >= maxLimit)) {
+      if (maxLimit > 0 && modified.length >= maxLimit) {
         break;
       }
     }
 
-    // Prepare the final response
-    const finalResponse = await searchAPI.searchPost({
-      search: search,
-      limit: increment,
-    });
-    finalResponse.data = modified.slice(0, maxLimit || modified.length);
+    const finalResponse = await searchAPI.searchPost({ search, limit: 1 });
+    finalResponse.data = modified.slice(0, maxLimit > 0 ? maxLimit : undefined);
     return finalResponse;
   }
 }

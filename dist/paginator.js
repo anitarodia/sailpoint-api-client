@@ -111,7 +111,16 @@ var Paginator = /** @class */ (function () {
     };
     Paginator.paginateSearchApi = function (searchAPI, search, increment, limit) {
         return __awaiter(this, void 0, void 0, function () {
-            var maxLimit, modified, sortField, searchAfter, concurrencyLimit, promises, i, searchParams, resultsArray, shouldBreak, _i, resultsArray_2, results, lastResult, finalResponse;
+            return __generator(this, function (_a) {
+                return [2 /*return*/, this.paginateSearchApiWithConcurrency(searchAPI, search, increment, limit)];
+            });
+        });
+    };
+    Paginator.paginateSearchApiWithConcurrency = function (searchAPI, search, increment, limit, concurrency) {
+        if (concurrency === void 0) { concurrency = 3; }
+        return __awaiter(this, void 0, void 0, function () {
+            var maxLimit, modified, fetchPage, searchAfter, pagePromises, i, pages, _i, pages_1, page, finalResponse_1, lastResult, sortField, finalResponse;
+            var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -119,52 +128,63 @@ var Paginator = /** @class */ (function () {
                         maxLimit = limit || 0;
                         modified = [];
                         if (!search.sort || search.sort.length !== 1) {
-                            throw "search must include exactly one sort parameter to paginate properly";
+                            throw new Error("Search must include exactly one sort parameter to paginate properly");
                         }
-                        sortField = search.sort[0].replace("-", "");
-                        searchAfter = [];
-                        concurrencyLimit = 10;
+                        fetchPage = function (searchAfter) { return __awaiter(_this, void 0, void 0, function () {
+                            var searchParams, results;
+                            return __generator(this, function (_a) {
+                                switch (_a.label) {
+                                    case 0:
+                                        searchParams = {
+                                            search: __assign(__assign({}, search), { searchAfter: searchAfter }),
+                                            limit: increment,
+                                        };
+                                        return [4 /*yield*/, searchAPI.searchPost(searchParams)];
+                                    case 1:
+                                        results = _a.sent();
+                                        return [2 /*return*/, results.data];
+                                }
+                            });
+                        }); };
                         _a.label = 1;
                     case 1:
-                        if (!true) return [3 /*break*/, 3];
-                        console.log("Paginating call, searchAfter = ".concat(JSON.stringify(searchAfter)));
-                        promises = [];
-                        for (i = 0; i < concurrencyLimit; i++) {
-                            searchParams = {
-                                search: __assign(__assign({}, search), { searchAfter: i === 0 ? searchAfter : undefined }),
-                                limit: increment,
-                            };
-                            promises.push(searchAPI.searchPost(searchParams));
+                        if (!true) return [3 /*break*/, 8];
+                        pagePromises = [];
+                        for (i = 0; i < concurrency; i++) {
+                            pagePromises.push(fetchPage(searchAfter));
                         }
-                        return [4 /*yield*/, Promise.all(promises)];
+                        return [4 /*yield*/, Promise.all(pagePromises)];
                     case 2:
-                        resultsArray = _a.sent();
-                        shouldBreak = false;
-                        // Process each response
-                        for (_i = 0, resultsArray_2 = resultsArray; _i < resultsArray_2.length; _i++) {
-                            results = resultsArray_2[_i];
-                            if (results.data.length > 0) {
-                                modified.push.apply(modified, results.data);
-                                lastResult = results.data[results.data.length - 1];
-                                searchAfter = [lastResult[sortField]];
-                            }
-                            // If the number of returned records is less than the increment, stop fetching
-                            if (results.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
-                                shouldBreak = true;
-                                break;
-                            }
-                        }
-                        if (shouldBreak || (maxLimit > 0 && modified.length >= maxLimit)) {
-                            return [3 /*break*/, 3];
+                        pages = _a.sent();
+                        _i = 0, pages_1 = pages;
+                        _a.label = 3;
+                    case 3:
+                        if (!(_i < pages_1.length)) return [3 /*break*/, 7];
+                        page = pages_1[_i];
+                        modified.push.apply(modified, page);
+                        if (!(page.length < increment || (maxLimit > 0 && modified.length >= maxLimit))) return [3 /*break*/, 5];
+                        return [4 /*yield*/, searchAPI.searchPost({ search: search, limit: 1 })];
+                    case 4:
+                        finalResponse_1 = _a.sent();
+                        finalResponse_1.data = modified.slice(0, maxLimit > 0 ? maxLimit : undefined);
+                        return [2 /*return*/, finalResponse_1];
+                    case 5:
+                        lastResult = page[page.length - 1];
+                        sortField = search.sort[0].replace("-", "");
+                        searchAfter = [lastResult[sortField]];
+                        _a.label = 6;
+                    case 6:
+                        _i++;
+                        return [3 /*break*/, 3];
+                    case 7:
+                        if (maxLimit > 0 && modified.length >= maxLimit) {
+                            return [3 /*break*/, 8];
                         }
                         return [3 /*break*/, 1];
-                    case 3: return [4 /*yield*/, searchAPI.searchPost({
-                            search: search,
-                            limit: increment,
-                        })];
-                    case 4:
+                    case 8: return [4 /*yield*/, searchAPI.searchPost({ search: search, limit: 1 })];
+                    case 9:
                         finalResponse = _a.sent();
-                        finalResponse.data = modified.slice(0, maxLimit || modified.length);
+                        finalResponse.data = modified.slice(0, maxLimit > 0 ? maxLimit : undefined);
                         return [2 /*return*/, finalResponse];
                 }
             });

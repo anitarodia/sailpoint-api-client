@@ -32,4 +32,5 @@ export interface ExtraParams {
 export declare class Paginator {
     static paginate<T, TResult, A extends PaginationParams & ExtraParams>(thisArg: T, callbackFn: (this: T, args: A) => Promise<AxiosResponse<TResult[], any>>, args?: A, increment?: number): Promise<AxiosResponse<TResult[], any>>;
     static paginateSearchApi(searchAPI: SearchApi, search: Search, increment?: number, limit?: number): Promise<AxiosResponse<SearchDocument[], any>>;
+    private static paginateSearchApiWithConcurrency;
 }
