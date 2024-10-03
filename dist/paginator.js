@@ -111,7 +111,8 @@ var Paginator = /** @class */ (function () {
     };
     Paginator.paginateSearchApi = function (searchAPI, search, increment, limit) {
         return __awaiter(this, void 0, void 0, function () {
-            var searchParams, offset, maxLimit, modified, results, result;
+            var searchParams, offset, maxLimit, modified, concurrency, lastResponse, promises, results, _i, results_1, result, finalResult, lastResult;
+            var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -126,31 +127,55 @@ var Paginator = /** @class */ (function () {
                         if (!search.sort || search.sort.length != 1) {
                             throw "search must include exactly one sort parameter to paginate properly";
                         }
+                        concurrency = 10;
+                        lastResponse = null;
                         _a.label = 1;
                     case 1:
                         if (!true) return [3 /*break*/, 3];
                         console.log("Paginating call, offset = ".concat(offset));
-                        return [4 /*yield*/, searchAPI.searchPost(searchParams)];
+                        promises = Array.from({ length: concurrency }, function (_, i) { return __awaiter(_this, void 0, void 0, function () {
+                            var params, lastResult;
+                            return __generator(this, function (_a) {
+                                if (maxLimit > 0 && offset + i * increment >= maxLimit) {
+                                    return [2 /*return*/, null];
+                                }
+                                params = __assign({}, searchParams);
+                                if (i > 0 && params.search.searchAfter) {
+                                    lastResult = modified[modified.length - 1];
+                                    params.search.searchAfter = [
+                                        lastResult[params.search.sort[0].replace("-", "")],
+                                    ];
+                                }
+                                return [2 /*return*/, searchAPI.searchPost(params)];
+                            });
+                        }); });
+                        return [4 /*yield*/, Promise.all(promises)];
                     case 2:
                         results = _a.sent();
-                        modified.push.apply(modified, results.data);
-                        if (results.data.length < increment ||
-                            (modified.length >= maxLimit && maxLimit > 0)) {
-                            results.data = modified;
-                            return [2 /*return*/, results];
+                        // Process results
+                        for (_i = 0, results_1 = results; _i < results_1.length; _i++) {
+                            result = results_1[_i];
+                            if (result === null)
+                                continue;
+                            lastResponse = result; // Store the last non-null response
+                            modified.push.apply(// Store the last non-null response
+                            modified, result.data);
+                            if (result.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
+                                finalResult = __assign(__assign({}, lastResponse), { data: modified });
+                                return [2 /*return*/, finalResult];
+                            }
+                        }
+                        // Update searchAfter for the next batch
+                        if (searchParams.search.sort) {
+                            lastResult = modified[modified.length - 1];
+                            searchParams.search.searchAfter = [
+                                lastResult[searchParams.search.sort[0].replace("-", "")],
+                            ];
                         }
                         else {
-                            result = results.data[results.data.length - 1];
-                            if (searchParams.search.sort) {
-                                searchParams.search.searchAfter = [
-                                    result[searchParams.search.sort[0].replace("-", "")],
-                                ];
-                            }
-                            else {
-                                throw "search unexpectedly did not return a result we can search after!";
-                            }
+                            throw "search unexpectedly did not return a result we can search after!";
                         }
-                        offset += increment;
+                        offset += increment * concurrency;
                         return [3 /*break*/, 1];
                     case 3: return [2 /*return*/];
                 }

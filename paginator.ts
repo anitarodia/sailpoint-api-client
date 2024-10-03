@@ -119,32 +119,64 @@ export class Paginator {
     let offset = 0;
     const maxLimit = limit ? limit : 0;
     let modified: SearchDocument[] = [];
-
     if (!search.sort || search.sort.length != 1) {
       throw "search must include exactly one sort parameter to paginate properly";
     }
-
+  
+    const concurrency = 10; // Hardcoded concurrency
+    let lastResponse: AxiosResponse<SearchDocument[], any> | null = null;
+  
     while (true) {
       console.log(`Paginating call, offset = ${offset}`);
-      let results = await searchAPI.searchPost(searchParams);
-      modified.push.apply(modified, results.data);
-      if (
-        results.data.length < increment ||
-        (modified.length >= maxLimit && maxLimit > 0)
-      ) {
-        results.data = modified;
-        return results;
-      } else {
-        const result = <any>results.data[results.data.length - 1];
-        if (searchParams.search.sort) {
-          searchParams.search.searchAfter = [
-            result[searchParams.search.sort[0].replace("-", "")],
+  
+      // Create an array of promises for concurrent API calls
+      const promises = Array.from({ length: concurrency }, async (_, i) => {
+        if (maxLimit > 0 && offset + i * increment >= maxLimit) {
+          return null;
+        }
+  
+        const params = { ...searchParams };
+        if (i > 0 && params.search.searchAfter) {
+          const lastResult = <any>modified[modified.length - 1];
+          params.search.searchAfter = [
+            lastResult[params.search.sort[0].replace("-", "")],
           ];
-        } else {
-          throw "search unexpectedly did not return a result we can search after!";
+        }
+  
+        return searchAPI.searchPost(params);
+      });
+  
+      // Execute concurrent API calls
+      const results = await Promise.all(promises);
+  
+      // Process results
+      for (const result of results) {
+        if (result === null) continue;
+        
+        lastResponse = result; // Store the last non-null response
+        modified.push(...result.data);
+        if (result.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
+          // Create a new AxiosResponse object with the accumulated data
+          const finalResult: AxiosResponse<SearchDocument[], any> = {
+            ...lastResponse,
+            data: modified
+          };
+          return finalResult;
         }
       }
-      offset += increment;
+  
+      // Update searchAfter for the next batch
+      if (searchParams.search.sort) {
+        const lastResult = <any>modified[modified.length - 1];
+        searchParams.search.searchAfter = [
+          lastResult[searchParams.search.sort[0].replace("-", "")],
+        ];
+      } else {
+        throw "search unexpectedly did not return a result we can search after!";
+      }
+  
+      offset += increment * concurrency;
     }
   }
+  
 }
