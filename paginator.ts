@@ -109,8 +109,7 @@ export class Paginator {
     searchAPI: SearchApi,
     search: Search,
     increment?: number,
-    limit?: number,
-    concurrencyLimit: number = 5 // Added concurrency support with default value of 5
+    limit?: number
   ): Promise<AxiosResponse<SearchDocument[], any>> {
     increment = increment ? increment : 250;
     const searchParams: SearchApiSearchPostRequest = {
@@ -120,71 +119,64 @@ export class Paginator {
     let offset = 0;
     const maxLimit = limit ? limit : 0;
     let modified: SearchDocument[] = [];
-  
     if (!search.sort || search.sort.length != 1) {
-      throw new Error("search must include exactly one sort parameter to paginate properly");
+      throw "search must include exactly one sort parameter to paginate properly";
     }
   
-    // Array to hold the responses from each concurrent batch of requests
-    const resultsArray: AxiosResponse<SearchDocument[], any>[] = [];
+    const concurrency = 10; // Hardcoded concurrency
+    let lastResponse: AxiosResponse<SearchDocument[], any> | null = null;
   
     while (true) {
       console.log(`Paginating call, offset = ${offset}`);
   
-      // Create an array of promises for the concurrent requests
-      const promises = [];
-      for (let i = 0; i < concurrencyLimit; i++) {
-        const concurrentSearchParams = {
-          ...searchParams,
-          search: {
-            ...searchParams.search,
-            searchAfter: searchParams.search.searchAfter,
-          },
-          limit: increment,
-        };
-  
-        // Add the search request to the promises array
-        promises.push(searchAPI.searchPost(concurrentSearchParams));
-      }
-  
-      // Wait for all the concurrent requests to complete
-      const responses = await Promise.all(promises);
-      resultsArray.push(...responses);
-  
-      // Process each response
-      for (const results of responses) {
-        modified.push(...results.data);
-  
-        // If the number of returned records is less than the increment or we've reached the max limit, stop
-        if (results.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
-          results.data = modified;
-          return results;
+      // Create an array of promises for concurrent API calls
+      const promises = Array.from({ length: concurrency }, async (_, i) => {
+        if (maxLimit > 0 && offset + i * increment >= maxLimit) {
+          return null;
         }
   
-        // Update the searchAfter value for the next batch based on the last result
-        const lastResult = results.data[results.data.length - 1] as any;
-        if (searchParams.search.sort) {
-          searchParams.search.searchAfter = [
-            lastResult[searchParams.search.sort[0].replace("-", "")],
+        const params = { ...searchParams };
+        if (i > 0 && params.search.searchAfter) {
+          const lastResult = <any>modified[modified.length - 1];
+          params.search.searchAfter = [
+            lastResult[params.search.sort[0].replace("-", "")],
           ];
-        } else {
-          throw new Error("search unexpectedly did not return a result we can search after!");
+        }
+  
+        return searchAPI.searchPost(params);
+      });
+  
+      // Execute concurrent API calls
+      const results = await Promise.all(promises);
+  
+      // Process results
+      for (const result of results) {
+        if (result === null) continue;
+        
+        lastResponse = result; // Store the last non-null response
+        modified.push(...result.data);
+        if (result.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
+          // Create a new AxiosResponse object with the accumulated data
+          const finalResult: AxiosResponse<SearchDocument[], any> = {
+            ...lastResponse,
+            data: modified
+          };
+          return finalResult;
         }
       }
   
-      // Increment the offset for the next set of concurrent requests
-      offset += increment * concurrencyLimit;
-  
-      // If we reach the maxLimit, stop fetching
-      if (maxLimit > 0 && modified.length >= maxLimit) {
-        break;
+      // Update searchAfter for the next batch
+      if (searchParams.search.sort) {
+        const lastResult = <any>modified[modified.length - 1];
+        searchParams.search.searchAfter = [
+          lastResult[searchParams.search.sort[0].replace("-", "")],
+        ];
+      } else {
+        throw "search unexpectedly did not return a result we can search after!";
       }
-    }
   
-    // Return the final response with all the data combined
-    const finalResponse = resultsArray[0]; // Use the first response for metadata
-    finalResponse.data = modified; // Set the combined data
-    return finalResponse;
+      offset += increment * concurrency;
+    }
   }
   
 }
