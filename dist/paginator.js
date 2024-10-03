@@ -51,61 +51,71 @@ exports.Paginator = void 0;
 var Paginator = /** @class */ (function () {
     function Paginator() {
     }
-    Paginator.paginate = function (thisArg, callbackFn, args, increment, concurrency // Added concurrency support
+    Paginator.paginate = function (thisArg, callbackFn, args, increment // Make increment optional
     ) {
         return __awaiter(this, void 0, void 0, function () {
-            var params, maxLimit, modified, requests, request, responses, _a;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
+            var params, maxLimit, modified, concurrencyLimit, resultsArray, promises, i, offset, _i, resultsArray_1, results, finalResponse;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
                     case 0:
                         params = args ? args : { limit: 0, offset: 0 };
                         maxLimit = params && params.limit ? params.limit : 0;
+                        // Set default values for increment and offset
                         if (!params.offset) {
                             params.offset = 0;
                         }
                         if (!increment) {
                             increment = 250;
                         }
-                        if (!concurrency) {
-                            concurrency = 1; // Default to 1 request at a time if concurrency is not provided
-                        }
                         params.limit = increment;
                         modified = [];
-                        requests = [];
-                        _b.label = 1;
+                        concurrencyLimit = 10;
+                        resultsArray = [];
+                        _a.label = 1;
                     case 1:
-                        if (!true) return [3 /*break*/, 6];
+                        if (!true) return [3 /*break*/, 3];
                         console.log("Paginating call, offset = ".concat(params.offset));
-                        request = callbackFn.call(thisArg, params).then(function (results) {
-                            modified.push.apply(modified, results.data);
-                            return results.data.length < increment || (modified.length >= maxLimit && maxLimit > 0);
-                        });
-                        requests.push(request);
-                        if (!(requests.length === concurrency)) return [3 /*break*/, 5];
-                        return [4 /*yield*/, Promise.all(requests)];
+                        promises = [];
+                        for (i = 0; i < concurrencyLimit; i++) {
+                            offset = params.offset + i * increment;
+                            promises.push(callbackFn.call(thisArg, __assign(__assign({}, params), { offset: offset })));
+                        }
+                        return [4 /*yield*/, Promise.all(promises)];
                     case 2:
-                        responses = _b.sent();
-                        if (!responses.some(function (isDone) { return isDone; })) return [3 /*break*/, 4];
-                        _a = [{}];
-                        return [4 /*yield*/, callbackFn.call(thisArg, params)];
-                    case 3: return [2 /*return*/, __assign.apply(void 0, [__assign.apply(void 0, _a.concat([_b.sent()])), { data: modified }])];
-                    case 4:
-                        requests.length = 0; // Clear the batch of requests
-                        _b.label = 5;
-                    case 5:
-                        params.offset += increment;
+                        // Wait for all the concurrent requests to complete
+                        resultsArray = _a.sent();
+                        // Process each response
+                        for (_i = 0, resultsArray_1 = resultsArray; _i < resultsArray_1.length; _i++) {
+                            results = resultsArray_1[_i];
+                            modified.push.apply(modified, results.data);
+                            // If the number of returned records is less than the increment, stop fetching
+                            if (results.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
+                                results.data = modified; // Update data with the modified array
+                                return [2 /*return*/, results]; // Return the last successful response
+                            }
+                        }
+                        // Increment the offset for the next set of parallel requests
+                        params.offset += increment * concurrencyLimit;
+                        // If we reach the maxLimit, stop fetching
+                        if (maxLimit > 0 && modified.length >= maxLimit) {
+                            return [3 /*break*/, 3]; // Exit the loop if we've reached the maximum limit
+                        }
                         return [3 /*break*/, 1];
-                    case 6: return [2 /*return*/];
+                    case 3:
+                        finalResponse = resultsArray[0];
+                        finalResponse.data = modified; // Set the combined data
+                        return [2 /*return*/, finalResponse]; // Return the final response
                 }
             });
         });
     };
-    Paginator.paginateSearchApi = function (searchAPI, search, increment, limit, concurrency // Added concurrency support
+    Paginator.paginateSearchApi = function (searchAPI, search, increment, limit, concurrencyLimit // Added concurrency support with default value of 5
     ) {
+        if (concurrencyLimit === void 0) { concurrencyLimit = 5; }
         return __awaiter(this, void 0, void 0, function () {
-            var searchParams, offset, maxLimit, modified, requests, request, responses, anyDone, _a;
-            return __generator(this, function (_b) {
-                switch (_b.label) {
+            var searchParams, offset, maxLimit, modified, resultsArray, promises, i, concurrentSearchParams, responses, _i, responses_1, results, lastResult, finalResponse;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
                     case 0:
                         increment = increment ? increment : 250;
                         searchParams = {
@@ -115,50 +125,54 @@ var Paginator = /** @class */ (function () {
                         offset = 0;
                         maxLimit = limit ? limit : 0;
                         modified = [];
-                        requests = [];
                         if (!search.sort || search.sort.length != 1) {
-                            throw new Error("Search must include exactly one sort parameter to paginate properly");
+                            throw new Error("search must include exactly one sort parameter to paginate properly");
                         }
-                        if (!concurrency) {
-                            concurrency = 1; // Default to 1 request at a time if concurrency is not provided
-                        }
-                        _b.label = 1;
+                        resultsArray = [];
+                        _a.label = 1;
                     case 1:
-                        if (!true) return [3 /*break*/, 6];
+                        if (!true) return [3 /*break*/, 3];
                         console.log("Paginating call, offset = ".concat(offset));
-                        request = searchAPI.searchPost(searchParams).then(function (results) {
+                        promises = [];
+                        for (i = 0; i < concurrencyLimit; i++) {
+                            concurrentSearchParams = __assign(__assign({}, searchParams), { search: __assign(__assign({}, searchParams.search), { searchAfter: searchParams.search.searchAfter }), limit: increment });
+                            // Add the search request to the promises array
+                            promises.push(searchAPI.searchPost(concurrentSearchParams));
+                        }
+                        return [4 /*yield*/, Promise.all(promises)];
+                    case 2:
+                        responses = _a.sent();
+                        resultsArray.push.apply(resultsArray, responses);
+                        // Process each response
+                        for (_i = 0, responses_1 = responses; _i < responses_1.length; _i++) {
+                            results = responses_1[_i];
                             modified.push.apply(modified, results.data);
-                            if (results.data.length < increment || (modified.length >= maxLimit && maxLimit > 0)) {
-                                return { done: true, data: modified };
+                            // If the number of returned records is less than the increment or we've reached the max limit, stop
+                            if (results.data.length < increment || (maxLimit > 0 && modified.length >= maxLimit)) {
+                                results.data = modified;
+                                return [2 /*return*/, results];
                             }
-                            var lastResult = results.data[results.data.length - 1];
+                            lastResult = results.data[results.data.length - 1];
                             if (searchParams.search.sort) {
                                 searchParams.search.searchAfter = [
                                     lastResult[searchParams.search.sort[0].replace("-", "")],
                                 ];
                             }
                             else {
-                                throw new Error("Search unexpectedly did not return a result we can search after!");
+                                throw new Error("search unexpectedly did not return a result we can search after!");
                             }
-                            return { done: false, data: results.data };
-                        });
-                        requests.push(request);
-                        if (!(requests.length === concurrency)) return [3 /*break*/, 5];
-                        return [4 /*yield*/, Promise.all(requests)];
-                    case 2:
-                        responses = _b.sent();
-                        anyDone = responses.some(function (response) { return response.done; });
-                        if (!anyDone) return [3 /*break*/, 4];
-                        _a = [{}];
-                        return [4 /*yield*/, searchAPI.searchPost(searchParams)];
-                    case 3: return [2 /*return*/, __assign.apply(void 0, [__assign.apply(void 0, _a.concat([_b.sent()])), { data: modified }])];
-                    case 4:
-                        requests.length = 0; // Clear the batch of requests
-                        _b.label = 5;
-                    case 5:
-                        offset += increment;
+                        }
+                        // Increment the offset for the next set of concurrent requests
+                        offset += increment * concurrencyLimit;
+                        // If we reach the maxLimit, stop fetching
+                        if (maxLimit > 0 && modified.length >= maxLimit) {
+                            return [3 /*break*/, 3];
+                        }
                         return [3 /*break*/, 1];
-                    case 6: return [2 /*return*/];
+                    case 3:
+                        finalResponse = resultsArray[0];
+                        finalResponse.data = modified; // Set the combined data
+                        return [2 /*return*/, finalResponse];
                 }
             });
         });
