@@ -4,7 +4,6 @@ export interface ConfigurationParameters {
     clientId?: string;
     clientSecret?: string;
     accessToken?: string;
-    serverIndex?: number;
     tokenUrl?: string;
 }
 export interface Configuration {
@@ -17,7 +16,6 @@ export interface Configuration {
     environments?: {
         [key: string]: Environment;
     };
-    serverIndex?: number;
 }
 export interface Environment {
     baseurl: string;
@@ -63,11 +61,11 @@ export declare class Configuration {
      */
     accessToken?: string | Promise<string> | ((name?: string, scopes?: string[]) => string) | ((name?: string, scopes?: string[]) => Promise<string>);
     /**
-     * parameter for clientId
-     *
-     * @type {string}
-     * @memberof Configuration
-     */
+      * parameter for clientId
+      *
+      * @type {string}
+      * @memberof Configuration
+      */
     tokenUrl?: string;
     /**
      * parameter for basic security
@@ -90,13 +88,6 @@ export declare class Configuration {
      * @memberof Configuration
      */
     basePath?: string;
-    /**
-     * base options for axios calls
-     *
-     * @type {any}
-     * @memberof Configuration
-     */
-    serverIndex?: number;
     /**
      * base options for axios calls
      *

@@ -82,9 +82,9 @@ var Configuration = /** @class */ (function () {
         if (!this.accessToken) {
             var url = "".concat(this.tokenUrl);
             var formData = new form_data_1.default();
-            formData.append("grant_type", "client_credentials");
-            formData.append("client_id", this.clientId);
-            formData.append("client_secret", this.clientSecret);
+            formData.append('grant_type', 'client_credentials');
+            formData.append('client_id', this.clientId);
+            formData.append('client_secret', this.clientSecret);
             this.accessToken = this.getAccessToken(url, formData);
         }
     }
@@ -92,49 +92,42 @@ var Configuration = /** @class */ (function () {
         var config = {};
         try {
             var homeDir = os.homedir();
-            var configPath = path.join(homeDir, ".sailpoint", "config.yaml");
-            var doc = yaml.load(fs.readFileSync(configPath, "utf8"));
-            if (doc.authtype && doc.authtype.toLowerCase() === "pat") {
+            var configPath = path.join(homeDir, '.sailpoint', 'config.yaml');
+            var doc = yaml.load(fs.readFileSync(configPath, 'utf8'));
+            if (doc.authtype && doc.authtype.toLowerCase() === 'pat') {
                 config.baseurl = doc.environments[doc.activeenvironment].baseurl;
                 config.clientId = doc.environments[doc.activeenvironment].pat.clientid;
-                config.clientSecret =
-                    doc.environments[doc.activeenvironment].pat.clientsecret;
-                config.tokenUrl = config.baseurl + "/oauth/token";
+                config.clientSecret = doc.environments[doc.activeenvironment].pat.clientsecret;
+                config.tokenUrl = config.baseurl + '/oauth/token';
             }
         }
         catch (error) {
-            console.log("unable to find config file in home directory");
+            console.log('unable to find config file in home directory');
         }
         return config;
     };
     Configuration.prototype.getLocalParams = function () {
         var config = {};
         try {
-            var configPath = "./config.json";
-            var jsonString = fs.readFileSync(configPath, "utf-8");
+            var configPath = './config.json';
+            var jsonString = fs.readFileSync(configPath, 'utf-8');
             var jsonData = JSON.parse(jsonString);
             config.baseurl = jsonData.BaseURL;
             config.clientId = jsonData.ClientId;
             config.clientSecret = jsonData.ClientSecret;
-            config.tokenUrl = config.baseurl + "/oauth/token";
+            config.tokenUrl = config.baseurl + '/oauth/token';
         }
         catch (error) {
-            console.log("unable to find config file in local directory");
+            console.log('unable to find config file in local directory');
         }
         return config;
     };
     Configuration.prototype.getEnvParams = function () {
         var config = {};
-        config.baseurl = process.env["SAIL_BASE_URL"]
-            ? process.env["SAIL_BASE_URL"]
-            : "";
-        config.clientId = process.env["SAIL_CLIENT_ID"]
-            ? process.env["SAIL_CLIENT_ID"]
-            : "";
-        config.clientSecret = process.env["SAIL_CLIENT_SECRET"]
-            ? process.env["SAIL_CLIENT_SECRET"]
-            : "";
-        config.tokenUrl = config.baseurl + "/oauth/token";
+        config.baseurl = process.env["SAIL_BASE_URL"] ? process.env["SAIL_BASE_URL"] : "";
+        config.clientId = process.env["SAIL_CLIENT_ID"] ? process.env["SAIL_CLIENT_ID"] : "";
+        config.clientSecret = process.env["SAIL_CLIENT_SECRET"] ? process.env["SAIL_CLIENT_SECRET"] : "";
+        config.tokenUrl = config.baseurl + '/oauth/token';
         return config;
     };
     Configuration.prototype.getParams = function () {
@@ -190,10 +183,8 @@ var Configuration = /** @class */ (function () {
      * @return True if the given MIME is JSON, false otherwise.
      */
     Configuration.prototype.isJsonMime = function (mime) {
-        var jsonMime = new RegExp("^(application/json|[^;/ \t]+/[^;/ \t]+[+]json)[ \t]*(;.*)?$", "i");
-        return (mime !== null &&
-            (jsonMime.test(mime) ||
-                mime.toLowerCase() === "application/json-patch+json"));
+        var jsonMime = new RegExp('^(application\/json|[^;/ \t]+\/[^;/ \t]+[+]json)[ \t]*(;.*)?$', 'i');
+        return mime !== null && (jsonMime.test(mime) || mime.toLowerCase() === 'application/json-patch+json');
     };
     return Configuration;
 }());

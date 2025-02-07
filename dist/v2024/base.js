@@ -31,7 +31,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.operationServerMap = exports.RequiredError = exports.BaseAPI = exports.COLLECTION_FORMATS = exports.BASE_PATH = void 0;
+exports.RequiredError = exports.BaseAPI = exports.COLLECTION_FORMATS = exports.BASE_PATH = void 0;
+// Some imports not used depending on template conditions
+// @ts-ignore
 var axios_1 = __importDefault(require("axios"));
 exports.BASE_PATH = "https://sailpoint.api.identitynow.com/v2024".replace(/\/+$/, "");
 /**
@@ -81,9 +83,4 @@ var RequiredError = /** @class */ (function (_super) {
     return RequiredError;
 }(Error));
 exports.RequiredError = RequiredError;
-/**
- *
- * @export
- */
-exports.operationServerMap = {};
 //# sourceMappingURL=base.js.map

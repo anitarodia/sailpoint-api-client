@@ -15,7 +15,6 @@ export interface ConfigurationParameters {
     password?: string;
     accessToken?: string | Promise<string> | ((name?: string, scopes?: string[]) => string) | ((name?: string, scopes?: string[]) => Promise<string>);
     basePath?: string;
-    serverIndex?: number;
     baseOptions?: any;
     formDataCtor?: new () => any;
 }
@@ -54,13 +53,6 @@ export declare class Configuration {
      * @memberof Configuration
      */
     basePath?: string;
-    /**
-     * override server index
-     *
-     * @type {number}
-     * @memberof Configuration
-     */
-    serverIndex?: number;
     /**
      * base options for axios calls
      *
