@@ -10,3 +10,4 @@
  * Do not edit the class manually.
  */
 export * from "./api";
+export * from "../configuration";

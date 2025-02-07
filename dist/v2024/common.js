@@ -182,6 +182,29 @@ var setOAuthToObject = function (object, name, scopes, configuration) {
     });
 };
 exports.setOAuthToObject = setOAuthToObject;
+function setFlattenedQueryParams(urlSearchParams, parameter, key) {
+    if (key === void 0) { key = ""; }
+    if (parameter == null)
+        return;
+    if (typeof parameter === "object") {
+        if (Array.isArray(parameter)) {
+            parameter.forEach(function (item) { return setFlattenedQueryParams(urlSearchParams, item, key); });
+        }
+        else {
+            Object.keys(parameter).forEach(function (currentKey) {
+                return setFlattenedQueryParams(urlSearchParams, parameter[currentKey], "".concat(key).concat(key !== '' ? '.' : '').concat(currentKey));
+            });
+        }
+    }
+    else {
+        if (urlSearchParams.has(key)) {
+            urlSearchParams.append(key, parameter);
+        }
+        else {
+            urlSearchParams.set(key, parameter);
+        }
+    }
+}
 /**
  *
  * @export
@@ -192,21 +215,7 @@ var setSearchParams = function (url) {
         objects[_i - 1] = arguments[_i];
     }
     var searchParams = new URLSearchParams(url.search);
-    for (var _a = 0, objects_1 = objects; _a < objects_1.length; _a++) {
-        var object = objects_1[_a];
-        for (var key in object) {
-            if (Array.isArray(object[key])) {
-                searchParams.delete(key);
-                for (var _b = 0, _c = object[key]; _b < _c.length; _b++) {
-                    var item = _c[_b];
-                    searchParams.append(key, item);
-                }
-            }
-            else {
-                searchParams.set(key, object[key]);
-            }
-        }
-    }
+    setFlattenedQueryParams(searchParams, objects);
     url.search = searchParams.toString();
 };
 exports.setSearchParams = setSearchParams;
@@ -241,7 +250,7 @@ var createRequestFunction = function (axiosArgs, globalAxios, BASE_PATH, configu
         if (axios === void 0) { axios = globalAxios; }
         if (basePath === void 0) { basePath = BASE_PATH; }
         (0, axios_retry_1.default)(globalAxios, configuration.retriesConfig);
-        var headers = __assign(__assign({ 'User-Agent': 'OpenAPI-Generator/1.4.8/ts' }, axiosArgs.axiosOptions.headers), { 'X-SailPoint-SDK': 'typescript-1.4.8' });
+        var headers = __assign(__assign({ 'User-Agent': 'OpenAPI-Generator/1.4.13/ts' }, axiosArgs.axiosOptions.headers), { 'X-SailPoint-SDK': 'typescript-1.4.13' });
         if (!configuration.experimental && ("X-SailPoint-Experimental" in headers)) {
             throw new Error("You are using Experimental APIs. Set configuration.experimental = True to enable these APIs in the SDK.");
         }
