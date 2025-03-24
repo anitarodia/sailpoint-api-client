@@ -69,7 +69,7 @@ var Paginator = /** @class */ (function () {
                         }
                         params.limit = increment;
                         modified = [];
-                        concurrencyLimit = 10;
+                        concurrencyLimit = 40;
                         resultsArray = [];
                         _a.label = 1;
                     case 1:

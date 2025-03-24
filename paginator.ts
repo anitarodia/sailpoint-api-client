@@ -61,7 +61,7 @@ export class Paginator {
     params.limit = increment;
 
     let modified: TResult[] = [];
-    const concurrencyLimit = 10; // Hardcoded concurrency limit
+    const concurrencyLimit = 40; // Hardcoded concurrency limit
 
     // Declare the variable to hold the results
     let resultsArray: AxiosResponse<TResult[], any>[] = [];
